@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Siolite — Email Reply Agent</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f5f7; color: #1a1a2e; min-height: 100vh; }
+
+  header { background: #fff; border-bottom: 1px solid #e0e0e0; padding: 16px 32px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; font-weight: 600; color: #1a1a2e; }
+  header span { font-size: 13px; color: #888; background: #f0f0f0; padding: 3px 10px; border-radius: 20px; }
+
+  .container { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 28px 32px; max-width: 1400px; margin: 0 auto; }
+
+  .panel { background: #fff; border-radius: 12px; border: 1px solid #e8e8e8; overflow: hidden; }
+  .panel-header { padding: 16px 20px; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: space-between; }
+  .panel-header h2 { font-size: 14px; font-weight: 600; color: #444; text-transform: uppercase; letter-spacing: 0.5px; }
+  .panel-body { padding: 20px; }
+
+  label { display: block; font-size: 13px; font-weight: 500; color: #555; margin-bottom: 6px; }
+
+  select, input[type="text"], textarea {
+    width: 100%; padding: 10px 13px; border: 1px solid #ddd; border-radius: 8px;
+    font-size: 14px; font-family: inherit; color: #1a1a2e; background: #fafafa;
+    transition: border-color 0.2s;
+  }
+  select:focus, input:focus, textarea:focus { outline: none; border-color: #6c63ff; background: #fff; }
+  textarea { resize: vertical; line-height: 1.6; }
+
+  .field { margin-bottom: 16px; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 10px 20px; border-radius: 8px; font-size: 14px; font-weight: 500;
+    cursor: pointer; border: none; transition: all 0.15s;
+  }
+  .btn-primary { background: #6c63ff; color: #fff; }
+  .btn-primary:hover { background: #5a52d5; }
+  .btn-primary:disabled { background: #b0aee8; cursor: not-allowed; }
+  .btn-secondary { background: #f0f0f0; color: #444; }
+  .btn-secondary:hover { background: #e4e4e4; }
+  .btn-sm { padding: 7px 14px; font-size: 13px; }
+  .btn-full { width: 100%; justify-content: center; }
+
+  .btn-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .status { font-size: 13px; color: #888; padding: 8px 0; min-height: 22px; }
+  .status.error { color: #e53e3e; }
+  .status.success { color: #38a169; }
+
+  .refine-box { margin-top: 16px; padding-top: 16px; border-top: 1px solid #f0f0f0; }
+  .refine-row { display: flex; gap: 8px; margin-top: 6px; }
+  .refine-row input { flex: 1; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-fr { background: #fff0f0; color: #c53030; }
+  .badge-de { background: #fffbe0; color: #b7791f; }
+  .badge-at { background: #e6fffa; color: #276749; }
+  .badge-se { background: #ebf8ff; color: #2c5282; }
+  .badge-it { background: #fff5f5; color: #c53030; }
+
+  .char-count { font-size: 12px; color: #aaa; text-align: right; margin-top: 4px; }
+
+  .detected-store { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #666; margin-bottom: 14px; min-height: 24px; }
+  .detected-store span { font-weight: 500; }
+
+  #reply-area { min-height: 280px; background: #fff; }
+
+  .copy-indicator { position: fixed; bottom: 20px; right: 20px; background: #38a169; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  .copy-indicator.show { opacity: 1; }
+
+  .history-item { padding: 8px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px; color: #666; }
+  .history-item strong { color: #333; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🤖 Siolite Email Agent</h1>
+  <span>Generates reply suggestions · Does NOT send</span>
+  <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+    <input type="password" id="api-key-input" placeholder="Anthropic API key"
+      style="width:260px;padding:7px 12px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fafafa;"
+      onkeydown="if(event.key==='Enter') saveKey()">
+    <button onclick="saveKey()" class="btn btn-secondary btn-sm" id="save-key-btn">Save key</button>
+    <span id="key-status" style="font-size:12px;color:#aaa;"></span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- LEFT: Input -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Customer Message</h2>
+    </div>
+    <div class="panel-body">
+
+      <div class="field">
+        <label>Customer message</label>
+        <textarea id="customer-msg" rows="14" placeholder="Paste the customer's email here..."
+          oninput="onMsgInput()"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+          <div class="detected-store" id="detected-store"></div>
+          <div class="char-count"><span id="char-count">0</span> chars</div>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-full" id="generate-btn" onclick="generateReply()">
+        <span id="btn-label">Generate Reply</span>
+      </button>
+      <div class="status" id="status"></div>
+
+    </div>
+  </div>
+
+  <!-- RIGHT: Output -->
+  <div class="panel">
+    <div class="panel-header">
+      <h2>Suggested Reply</h2>
+      <span style="font-size:12px;color:#aaa;">Edit freely · Not sent automatically</span>
+    </div>
+    <div class="panel-body">
+
+      <div class="field">
+        <textarea id="reply-area" rows="14" placeholder="Reply will appear here after generation..."></textarea>
+      </div>
+
+      <div class="btn-actions">
+        <button class="btn btn-secondary btn-sm" onclick="copyReply()">📋 Copy</button>
+        <button class="btn btn-secondary btn-sm" onclick="clearAll()">🗑 Clear</button>
+      </div>
+
+      <!-- Refine section -->
+      <div class="refine-box">
+        <label>Refine the reply</label>
+        <div class="refine-row">
+          <input type="text" id="refine-input" placeholder="e.g. Make it shorter / Add tracking link / More formal"
+            onkeydown="if(event.key==='Enter') refineReply()">
+          <button class="btn btn-primary btn-sm" id="refine-btn" onclick="refineReply()">
+            <span id="refine-label">Refine ✨</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="status" id="refine-status"></div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="copy-indicator" id="copy-indicator">✓ Copied to clipboard</div>
+
+<script>
+let API_KEY = localStorage.getItem('siolite_api_key') || '';
+const API_URL = "https://api.anthropic.com/v1/messages";
+
+function saveKey() {
+  const val = document.getElementById('api-key-input').value.trim();
+  if (!val) return;
+  API_KEY = val;
+  localStorage.setItem('siolite_api_key', val);
+  document.getElementById('api-key-input').value = '';
+  document.getElementById('key-status').textContent = '✓ Saved';
+  document.getElementById('key-status').style.color = '#38a169';
+  setTimeout(() => { document.getElementById('key-status').textContent = ''; }, 2000);
+}
+
+// On load: show indicator if key already saved
+window.addEventListener('DOMContentLoaded', () => {
+  if (API_KEY) {
+    document.getElementById('key-status').textContent = '✓ Key loaded';
+    document.getElementById('key-status').style.color = '#38a169';
+  }
+});
+
+let conversationHistory = [];
+let detectedStore = null;
+
+const STORES = {
+  FR: { name: "hey-siolite.com", lang: "French",           flag: "🇫🇷", email: "serviceclients@hey-siolite.com",  closing: "Cordialement,\nL'équipe Siolite" },
+  DE: { name: "siolite.de",      lang: "German",           flag: "🇩🇪", email: "kundenservice@siolite.de",        closing: "Mit freundlichen Grüßen,\nTeam Siolite" },
+  AT: { name: "siolite.at",      lang: "German (Austria)", flag: "🇦🇹", email: "kundenservice@siolite.at",        closing: "Mit freundlichen Grüßen,\nTeam Siolite" },
+  SE: { name: "siolitesverige.se",lang: "Swedish",         flag: "🇸🇪", email: "info@siolitesverige.se",          closing: "Med vänliga hälsningar,\nTeam Siolite" },
+  IT: { name: "siolite.it",      lang: "Italian",          flag: "🇮🇹", email: "info@siolite.it",                 closing: "Cordiali saluti,\nIl Team Siolite" },
+};
+
+// Simple client-side language detection for the badge
+const LANG_SIGNALS = {
+  FR: ["bonjour","merci","commande","livraison","votre","vous","reçu","colis","produit","retour","remboursement","déçu","problème","où est","quand","pas reçu","cher","madame","monsieur","cordialement","réponse","courriel","indicatif","nom:","e-mail:","téléphone"],
+  DE: ["hallo","guten","bitte","danke","bestellung","lieferung","gerät","zurück","nicht erhalten","wann","leider","freundlichen","grüßen","vakuum","rücksendung","rechnung","kundenservice","österreich","ländercode"],
+  IT: ["buongiorno","buonasera","salve","grazie","ordine","consegna","pacco","reso","rimborso","non funziona","dove","quando","gentile","cordiali saluti","spedizione","sacchetti","ciao"],
+  SE: ["hej","tack","beställning","leverans","retur","återbetalning","fungerar inte","var är","när","vänliga","hälsningar"],
+};
+
+function detectLanguage(text) {
+  if (!text || text.length < 15) return null;
+  const t = text.toLowerCase();
+  const scores = {};
+  for (const [lang, signals] of Object.entries(LANG_SIGNALS)) {
+    scores[lang] = signals.filter(s => t.includes(s)).length;
+  }
+  const best = Object.entries(scores).sort((a,b) => b[1]-a[1])[0];
+  return best[1] >= 1 ? best[0] : null;
+}
+
+let detectDebounce = null;
+function onMsgInput() {
+  const msg = document.getElementById('customer-msg').value;
+  document.getElementById('char-count').textContent = msg.length;
+  clearTimeout(detectDebounce);
+  detectDebounce = setTimeout(() => {
+    const lang = detectLanguage(msg);
+    detectedStore = lang;
+    const el = document.getElementById('detected-store');
+    if (lang && STORES[lang]) {
+      const s = STORES[lang];
+      el.innerHTML = `<span class="badge badge-${lang.toLowerCase()}">${s.flag} ${lang}</span> <span>${s.name}</span>`;
+    } else {
+      el.innerHTML = msg.length > 15 ? '<span style="color:#bbb">Language not detected</span>' : '';
+    }
+  }, 300);
+}
+
+function getSystemPrompt() {
+  return `You are a professional customer support agent for Siolite, an e-commerce brand selling compact vacuum sealing devices and accessories (bags, rolls).
+
+Siolite operates 5 stores:
+- 🇫🇷 hey-siolite.com — French customers
+- 🇩🇪 siolite.de — German customers
+- 🇦🇹 siolite.at — Austrian customers (German)
+- 🇸🇪 siolitesverige.se — Swedish customers
+- 🇮🇹 siolite.it — Italian customers
+
+LANGUAGE: Detect the customer's language from their message and reply in THAT SAME language. Never switch languages.
+
+TONE:
+- Always formal and polite
+- Use formal address: "Sie" (DE/AT), "vous" (FR), "Lei" (IT), "Ni" (SE)
+- Address the customer by name if known: "Sehr geehrte Frau Schmidt," / "Madame Dupont," / "Gentile Sig.ra Rossi," / "Bonjour," if name unknown
+- Warm but professional — never cold, never over-the-top
+
+REPLY STRUCTURE:
+1. Greeting (with customer name if known)
+2. One sentence acknowledging their message
+3. Address the issue directly and clearly
+4. Next step or resolution
+5. Formal closing in their language
+
+PRODUCT KNOWLEDGE:
+- Vacuum sealing devices: handheld, compact, battery or USB charged
+- Accessories: reusable vacuum bags in multiple sizes
+- Typical delivery: 5–10 business days
+- Order confirmation email = invoice (no separate invoice is issued)
+- Defective product → apologise, ask for photo or short video, offer replacement or full refund
+- Return request → explain return process, confirm refund once item received back
+- Tracking / order status → ask for order number if not given, will check with logistics team
+- Promo code / discount → confirm the offer is real, provide code or explain how to apply
+
+REAL REPLY EXAMPLES:
+
+[German]
+Customer: Bisher habe ich das zugesagte Gerät nicht erhalten. Den Betrag habe ich bereits überwiesen.
+Reply: Sehr geehrte Frau Müller, vielen Dank für Ihre Nachricht. Wir haben Ihren Fall an unser internes Team weitergeleitet und prüfen aktuell den Status Ihrer Bestellung. Sobald wir eine Rückmeldung haben, informieren wir Sie umgehend. Vielen Dank für Ihre Geduld. Mit freundlichen Grüßen, Team Siolite
+
+[German – invoice]
+Customer: Die Lieferung ist angekommen, vielen Dank! Gibt es eine Rechnung?
+Reply: Sehr geehrte Frau Mortinger, vielen Dank für Ihre Nachricht. Es freut uns, dass Ihre Lieferung angekommen ist. Bitte beachten Sie, dass Ihre Bestellbestätigung gleichzeitig als Rechnung gilt. Sollten Sie diese erneut benötigen, helfen wir Ihnen gerne weiter. Mit freundlichen Grüßen, Team Siolite
+
+[French]
+Customer: Je suis méfiant, est-ce que vos offres sont vraiment réelles ?
+Reply: Bonjour, merci pour votre franchise — nous comprenons parfaitement votre méfiance. Chez Siolite, nous faisons de notre mieux pour offrir une expérience transparente. Les offres que vous voyez sont bien réelles et font partie de nos campagnes promotionnelles. Cordialement, L'équipe Siolite
+
+[Italian]
+Customer: Ho bisogno di nuovi sacchetti di varie misure. Come posso acquistarli?
+Reply: Buongiorno Francesco, grazie per il suo messaggio. Per acquistare nuovi sacchetti può visitare il nostro sito nella sezione accessori. I nostri sacchetti sono riutilizzabili e disponibili in più misure. Cordiali saluti, Il Team Siolite
+
+[Italian – delivery]
+Customer: Come contattare il corriere? Si è recato ad un indirizzo diverso.
+Reply: Buongiorno, la ringraziamo per il messaggio. Ci dispiace per l'inconveniente. Secondo il nostro sistema la spedizione risulta in transito — la invitiamo a contattare direttamente il corriere con il numero di tracking fornito nell'email di spedizione. Restiamo a disposizione. Cordiali saluti, Il Team Siolite
+
+IMPORTANT: Output ONLY the reply text — no explanations, no labels, no meta-commentary. Just the email reply, ready to copy.`;
+}
+
+async function callClaude(messages) {
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': API_KEY,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-6',
+      max_tokens: 1024,
+      system: getSystemPrompt(),
+      messages: messages
+    })
+  });
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error?.message || `HTTP ${response.status}`);
+  }
+  return (await response.json()).content[0].text;
+}
+
+async function generateReply() {
+  const msg = document.getElementById('customer-msg').value.trim();
+  if (!API_KEY) { setStatus('status', 'Enter your Anthropic API key in the top bar first.', 'error'); return; }
+  if (!msg) { setStatus('status', 'Please paste a customer message.', 'error'); return; }
+
+  setLoading('generate-btn', 'btn-label', true, 'Generating...');
+  setStatus('status', '');
+  conversationHistory = [];
+
+  conversationHistory.push({ role: 'user', content: `Customer message:\n${msg}` });
+
+  try {
+    const reply = await callClaude(conversationHistory);
+    conversationHistory.push({ role: 'assistant', content: reply });
+    document.getElementById('reply-area').value = reply;
+    setStatus('status', '✓ Reply generated', 'success');
+  } catch (e) {
+    setStatus('status', `Error: ${e.message}`, 'error');
+  } finally {
+    setLoading('generate-btn', 'btn-label', false, 'Generate Reply');
+  }
+}
+
+async function refineReply() {
+  const instruction = document.getElementById('refine-input').value.trim();
+  if (!instruction) { setStatus('refine-status', 'Enter an instruction.', 'error'); return; }
+  if (!conversationHistory.length) { setStatus('refine-status', 'Generate a reply first.', 'error'); return; }
+
+  setLoading('refine-btn', 'refine-label', true, 'Refining...');
+  setStatus('refine-status', '');
+
+  // Sync any manual edits the user made in the textarea
+  const currentReply = document.getElementById('reply-area').value.trim();
+  if (currentReply && conversationHistory.at(-1)?.role === 'assistant') {
+    conversationHistory.at(-1).content = currentReply;
+  }
+
+  conversationHistory.push({ role: 'user', content: instruction });
+
+  try {
+    const refined = await callClaude(conversationHistory);
+    conversationHistory.push({ role: 'assistant', content: refined });
+    document.getElementById('reply-area').value = refined;
+    document.getElementById('refine-input').value = '';
+    setStatus('refine-status', '✓ Done', 'success');
+  } catch (e) {
+    setStatus('refine-status', `Error: ${e.message}`, 'error');
+    conversationHistory.pop();
+  } finally {
+    setLoading('refine-btn', 'refine-label', false, 'Refine ✨');
+  }
+}
+
+function copyReply() {
+  const text = document.getElementById('reply-area').value;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const el = document.getElementById('copy-indicator');
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2000);
+  });
+}
+
+function clearAll() {
+  document.getElementById('customer-msg').value = '';
+  document.getElementById('reply-area').value = '';
+  document.getElementById('refine-input').value = '';
+  document.getElementById('char-count').textContent = '0';
+  document.getElementById('detected-store').innerHTML = '';
+  document.getElementById('status').textContent = '';
+  document.getElementById('refine-status').textContent = '';
+  conversationHistory = [];
+  detectedStore = null;
+}
+
+function setStatus(id, msg, type = '') {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.className = 'status' + (type ? ` ${type}` : '');
+}
+
+function setLoading(btnId, labelId, loading, text) {
+  const btn = document.getElementById(btnId);
+  const label = document.getElementById(labelId);
+  btn.disabled = loading;
+  label.innerHTML = loading ? `<span class="spinner"></span> ${text}` : text;
+}
+</script>
+</body>
+</html>
